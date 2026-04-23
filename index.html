@@ -144,6 +144,7 @@ function App() {
   const [tool, setTool] = useState('fill'); // fill | erase
   const [showGrid, setShowGrid] = useState(true);
   const [showBg, setShowBg] = useState(true);
+  const [includeOriginalOnDownload, setIncludeOriginalOnDownload] = useState(false);
   const [gridOpacity, setGridOpacity] = useState(0.6);
   const [cellOpacity, setCellOpacity] = useState(1.0);
   const isDragging = useRef(false);
@@ -264,7 +265,7 @@ function App() {
     canvas.height = canvasSize.h;
     const ctx = canvas.getContext('2d');
 
-    if (bgImage) {
+    if (includeOriginalOnDownload && bgImage) {
       ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
     } else {
       ctx.fillStyle = '#fff';
@@ -444,6 +445,14 @@ function App() {
 
           <div className="panel">
             <h3>Actions</h3>
+            <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={includeOriginalOnDownload}
+                onChange={e => setIncludeOriginalOnDownload(e.target.checked)}
+              />
+              Include original image in download
+            </label>
             <button className="btn-success" onClick={download}>⬇ Download as JPG</button>
             <button className="btn-secondary" onClick={saveState}>💾 Save State (JSON)</button>
             <button className="btn-secondary" onClick={() => loadInputRef.current.click()}>📂 Load State (JSON)</button>
