@@ -338,7 +338,10 @@ function App() {
           alert('Invalid or incompatible state file.');
           return;
         }
-        setGridSize(size);
+        if (size !== gridSize) {
+          alert(`Grid size mismatch. Current grid is ${gridSize}×${gridSize}, but file is ${size}×${size}.`);
+          return;
+        }
         setGrid(state.grid.map(row => row.map(v => v === 1)));
         if (state.canvasSize) setCanvasSize(state.canvasSize);
         if (state.gridBounds) setGridBounds(state.gridBounds);
