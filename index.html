@@ -128,17 +128,16 @@
 <script type="text/babel">
 const { useState, useRef, useEffect, useCallback } = React;
 
-const GRID_SIZE = 45;
-
-function createEmptyGrid() {
-  return Array.from({ length: GRID_SIZE }, () => new Array(GRID_SIZE).fill(false));
+function createEmptyGrid(size) {
+  return Array.from({ length: size }, () => new Array(size).fill(false));
 }
 
 function App() {
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
+  const [gridSize, setGridSize] = useState(45);
   const [bgImage, setBgImage] = useState(null);
-  const [grid, setGrid] = useState(createEmptyGrid);
+  const [grid, setGrid] = useState(() => createEmptyGrid(45));
   const [canvasSize, setCanvasSize] = useState({ w: 600, h: 600 });
   const [gridBounds, setGridBounds] = useState({ x: 0, y: 0, w: 600, h: 600 });
   const [tool, setTool] = useState('fill'); // fill | erase
@@ -150,8 +149,8 @@ function App() {
   const isDragging = useRef(false);
   const loadInputRef = useRef(null);
 
-  const cellW = gridBounds.w / GRID_SIZE;
-  const cellH = gridBounds.h / GRID_SIZE;
+  const cellW = gridBounds.w / gridSize;
+  const cellH = gridBounds.h / gridSize;
 
   const filledCount = grid.flat().filter(Boolean).length;
 
@@ -171,8 +170,8 @@ function App() {
 
     // Filled cells
     ctx.globalAlpha = cellOpacity;
-    for (let r = 0; r < GRID_SIZE; r++) {
-      for (let c = 0; c < GRID_SIZE; c++) {
+    for (let r = 0; r < gridSize; r++) {
+      for (let c = 0; c < gridSize; c++) {
         if (grid[r][c]) {
           ctx.fillStyle = '#000';
           ctx.fillRect(
@@ -191,11 +190,11 @@ function App() {
       ctx.globalAlpha = gridOpacity;
       ctx.strokeStyle = '#e94560';
       ctx.lineWidth = 0.5;
-      for (let i = 0; i <= GRID_SIZE; i++) {
+      for (let i = 0; i <= gridSize; i++) {
         const x = gridBounds.x + i * cellW;
         ctx.beginPath(); ctx.moveTo(x, gridBounds.y); ctx.lineTo(x, gridBounds.y + gridBounds.h); ctx.stroke();
       }
-      for (let i = 0; i <= GRID_SIZE; i++) {
+      for (let i = 0; i <= gridSize; i++) {
         const y = gridBounds.y + i * cellH;
         ctx.beginPath(); ctx.moveTo(gridBounds.x, y); ctx.lineTo(gridBounds.x + gridBounds.w, y); ctx.stroke();
       }
@@ -232,7 +231,7 @@ function App() {
     const my = (e.clientY - rect.top) * scaleY;
     const col = Math.floor((mx - gridBounds.x) / cellW);
     const row = Math.floor((my - gridBounds.y) / cellH);
-    if (col < 0 || col >= GRID_SIZE || row < 0 || row >= GRID_SIZE) return null;
+    if (col < 0 || col >= gridSize || row < 0 || row >= gridSize) return null;
     return { row, col };
   }
 
@@ -273,8 +272,8 @@ function App() {
     }
 
     ctx.globalAlpha = cellOpacity;
-    for (let r = 0; r < GRID_SIZE; r++) {
-      for (let c = 0; c < GRID_SIZE; c++) {
+    for (let r = 0; r < gridSize; r++) {
+      for (let c = 0; c < gridSize; c++) {
         if (grid[r][c]) {
           ctx.fillStyle = '#000';
           ctx.fillRect(
@@ -293,12 +292,12 @@ function App() {
     link.click();
   }
 
-  function clearGrid() { setGrid(createEmptyGrid()); }
+  function clearGrid() { setGrid(createEmptyGrid(gridSize)); }
 
   function saveState() {
     const state = {
       version: 1,
-      gridSize: GRID_SIZE,
+      gridSize,
       canvasSize,
       gridBounds,
       grid: grid.map(row => row.map(v => v ? 1 : 0))
@@ -318,10 +317,18 @@ function App() {
     reader.onload = evt => {
       try {
         const state = JSON.parse(evt.target.result);
-        if (!state.grid || state.gridSize !== GRID_SIZE) {
-          alert('Invalid or incompatible state file (must be a 45×45 grid).');
+        const size = parseInt(state.gridSize);
+        const isValidGrid = Array.isArray(state.grid)
+          && Number.isInteger(size)
+          && size > 0
+          && state.grid.length === size
+          && state.grid.every(row => Array.isArray(row) && row.length === size);
+
+        if (!isValidGrid) {
+          alert('Invalid or incompatible state file.');
           return;
         }
+        setGridSize(size);
         setGrid(state.grid.map(row => row.map(v => v === 1)));
         if (state.canvasSize) setCanvasSize(state.canvasSize);
         if (state.gridBounds) setGridBounds(state.gridBounds);
@@ -338,7 +345,7 @@ function App() {
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <header>
         <h1>QR Code Fixer</h1>
-        <span style={{ fontSize: '0.8rem', color: '#777' }}>45×45 grid overlay editor</span>
+        <span style={{ fontSize: '0.8rem', color: '#777' }}>{gridSize}×{gridSize} grid overlay editor</span>
       </header>
 
       <div className="main">
@@ -377,6 +384,26 @@ function App() {
 
           <div className="panel">
             <h3>Grid Position &amp; Size</h3>
+            <label>
+              Grid size
+              <div className="slider-row">
+                <input
+                  type="range"
+                  min="10"
+                  max="100"
+                  step="1"
+                  value={gridSize}
+                  disabled={filledCount > 0}
+                  onChange={e => {
+                    const size = parseInt(e.target.value) || 45;
+                    setGridSize(size);
+                    setGrid(createEmptyGrid(size));
+                  }}
+                />
+                <span className="value-badge">{gridSize}</span>
+              </div>
+            </label>
+            {filledCount > 0 && <div className="hint">Clear all cells to change grid size.</div>}
             <div className="row">
               <label>X offset
                 <input type="number" value={gridBounds.x}
@@ -440,7 +467,7 @@ function App() {
                 ✕ Erase
               </button>
             </div>
-            <div className="stat"><span>Filled cells</span><span>{filledCount} / {GRID_SIZE * GRID_SIZE}</span></div>
+            <div className="stat"><span>Filled cells</span><span>{filledCount} / {gridSize * gridSize}</span></div>
           </div>
 
           <div className="panel">
