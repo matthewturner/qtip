@@ -255,6 +255,16 @@ function App() {
     if (cell) applyTool(cell.row, cell.col);
   }
 
+  function handleDoubleClick(e) {
+    const cell = getCellFromEvent(e);
+    if (!cell) return;
+    setGrid(prev => {
+      const next = prev.map(r => [...r]);
+      next[cell.row][cell.col] = false;
+      return next;
+    });
+  }
+
   function handleMouseUp() { isDragging.current = false; }
 
   function download() {
@@ -496,6 +506,7 @@ function App() {
             height={canvasSize.h}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
+            onDoubleClick={handleDoubleClick}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
           />
