@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QR Code Fixer</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: #16213e;
+      padding: 12px 24px;
+      border-bottom: 1px solid #0f3460;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    header h1 { font-size: 1.2rem; color: #e94560; }
+    .main { display: flex; flex: 1; gap: 0; }
+    .sidebar {
+      width: 280px;
+      background: #16213e;
+      border-right: 1px solid #0f3460;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+    }
+    .panel {
+      background: #0f3460;
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .panel h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.1em; color: #aaa; margin-bottom: 4px; }
+    label { font-size: 0.85rem; color: #ccc; display: flex; flex-direction: column; gap: 4px; }
+    input[type="range"] { width: 100%; accent-color: #e94560; }
+    input[type="number"] {
+      background: #1a1a2e;
+      border: 1px solid #0f3460;
+      color: #eee;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      width: 100%;
+    }
+    .row { display: flex; gap: 8px; }
+    .row label { flex: 1; }
+    .value-badge {
+      background: #1a1a2e;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 0.8rem;
+      color: #e94560;
+      font-family: monospace;
+      align-self: center;
+    }
+    button {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+    .btn-primary { background: #e94560; color: #fff; width: 100%; }
+    .btn-secondary { background: #0f3460; color: #eee; border: 1px solid #e94560; }
+    .btn-success { background: #2ecc71; color: #1a1a2e; width: 100%; }
+    .btn-danger { background: #555; color: #eee; width: 100%; }
+    .upload-area {
+      border: 2px dashed #0f3460;
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .upload-area:hover { border-color: #e94560; }
+    .upload-area p { font-size: 0.8rem; color: #888; margin-top: 6px; }
+    .canvas-area {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      overflow: auto;
+    }
+    canvas {
+      cursor: crosshair;
+      border: 2px solid #0f3460;
+      border-radius: 4px;
+      max-width: 100%;
+    }
+    .hint { font-size: 0.75rem; color: #777; }
+    .stat { display: flex; justify-content: space-between; font-size: 0.8rem; color: #aaa; }
+    .stat span:last-child { color: #e94560; font-family: monospace; }
+    input[type="file"] { display: none; }
+    .slider-row { display: flex; align-items: center; gap: 8px; }
+    .slider-row input[type="range"] { flex: 1; }
+    .tool-toggle { display: flex; gap: 6px; }
+    .tool-btn {
+      flex: 1;
+      padding: 6px;
+      font-size: 0.8rem;
+      border: 2px solid transparent;
+    }
+    .tool-btn.active { border-color: #e94560; background: #1a1a2e; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useRef, useEffect, useCallback } = React;
+
+const GRID_SIZE = 45;
+
+function createEmptyGrid() {
+  return Array.from({ length: GRID_SIZE }, () => new Array(GRID_SIZE).fill(false));
+}
+
+function App() {
+  const canvasRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const [bgImage, setBgImage] = useState(null);
+  const [grid, setGrid] = useState(createEmptyGrid);
+  const [canvasSize, setCanvasSize] = useState({ w: 600, h: 600 });
+  const [gridBounds, setGridBounds] = useState({ x: 0, y: 0, w: 600, h: 600 });
+  const [tool, setTool] = useState('fill'); // fill | erase
+  const [showGrid, setShowGrid] = useState(true);
+  const [showBg, setShowBg] = useState(true);
+  const [gridOpacity, setGridOpacity] = useState(0.6);
+  const [cellOpacity, setCellOpacity] = useState(1.0);
+  const isDragging = useRef(false);
+  const loadInputRef = useRef(null);
+
+  const cellW = gridBounds.w / GRID_SIZE;
+  const cellH = gridBounds.h / GRID_SIZE;
+
+  const filledCount = grid.flat().filter(Boolean).length;
+
+  function draw() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Background
+    if (showBg && bgImage) {
+      ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+    } else {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // Filled cells
+    ctx.globalAlpha = cellOpacity;
+    for (let r = 0; r < GRID_SIZE; r++) {
+      for (let c = 0; c < GRID_SIZE; c++) {
+        if (grid[r][c]) {
+          ctx.fillStyle = '#000';
+          ctx.fillRect(
+            gridBounds.x + c * cellW,
+            gridBounds.y + r * cellH,
+            Math.ceil(cellW),
+            Math.ceil(cellH)
+          );
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
+
+    // Grid lines
+    if (showGrid) {
+      ctx.globalAlpha = gridOpacity;
+      ctx.strokeStyle = '#e94560';
+      ctx.lineWidth = 0.5;
+      for (let i = 0; i <= GRID_SIZE; i++) {
+        const x = gridBounds.x + i * cellW;
+        ctx.beginPath(); ctx.moveTo(x, gridBounds.y); ctx.lineTo(x, gridBounds.y + gridBounds.h); ctx.stroke();
+      }
+      for (let i = 0; i <= GRID_SIZE; i++) {
+        const y = gridBounds.y + i * cellH;
+        ctx.beginPath(); ctx.moveTo(gridBounds.x, y); ctx.lineTo(gridBounds.x + gridBounds.w, y); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  useEffect(() => { draw(); }, [bgImage, grid, gridBounds, showGrid, showBg, gridOpacity, cellOpacity]);
+
+  function handleImageUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      setBgImage(img);
+      const size = Math.min(Math.max(img.width, img.height), 800);
+      const aspect = img.width / img.height;
+      let w = size, h = size;
+      if (aspect > 1) h = Math.round(size / aspect);
+      else w = Math.round(size * aspect);
+      setCanvasSize({ w, h });
+      setGridBounds({ x: 0, y: 0, w, h });
+    };
+    img.src = url;
+  }
+
+  function getCellFromEvent(e) {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top) * scaleY;
+    const col = Math.floor((mx - gridBounds.x) / cellW);
+    const row = Math.floor((my - gridBounds.y) / cellH);
+    if (col < 0 || col >= GRID_SIZE || row < 0 || row >= GRID_SIZE) return null;
+    return { row, col };
+  }
+
+  function applyTool(row, col) {
+    setGrid(prev => {
+      const next = prev.map(r => [...r]);
+      next[row][col] = tool === 'fill';
+      return next;
+    });
+  }
+
+  function handleMouseDown(e) {
+    isDragging.current = true;
+    const cell = getCellFromEvent(e);
+    if (cell) applyTool(cell.row, cell.col);
+  }
+
+  function handleMouseMove(e) {
+    if (!isDragging.current) return;
+    const cell = getCellFromEvent(e);
+    if (cell) applyTool(cell.row, cell.col);
+  }
+
+  function handleMouseUp() { isDragging.current = false; }
+
+  function download() {
+    // Render a clean version without grid lines
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasSize.w;
+    canvas.height = canvasSize.h;
+    const ctx = canvas.getContext('2d');
+
+    if (bgImage) {
+      ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+    } else {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    ctx.globalAlpha = cellOpacity;
+    for (let r = 0; r < GRID_SIZE; r++) {
+      for (let c = 0; c < GRID_SIZE; c++) {
+        if (grid[r][c]) {
+          ctx.fillStyle = '#000';
+          ctx.fillRect(
+            gridBounds.x + c * cellW,
+            gridBounds.y + r * cellH,
+            Math.ceil(cellW),
+            Math.ceil(cellH)
+          );
+        }
+      }
+    }
+
+    const link = document.createElement('a');
+    link.download = 'qr-fixed.jpg';
+    link.href = canvas.toDataURL('image/jpeg', 0.95);
+    link.click();
+  }
+
+  function clearGrid() { setGrid(createEmptyGrid()); }
+
+  function saveState() {
+    const state = {
+      version: 1,
+      gridSize: GRID_SIZE,
+      canvasSize,
+      gridBounds,
+      grid: grid.map(row => row.map(v => v ? 1 : 0))
+    };
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.download = 'qr-state.json';
+    link.href = URL.createObjectURL(blob);
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  function loadState(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+      try {
+        const state = JSON.parse(evt.target.result);
+        if (!state.grid || state.gridSize !== GRID_SIZE) {
+          alert('Invalid or incompatible state file (must be a 45×45 grid).');
+          return;
+        }
+        setGrid(state.grid.map(row => row.map(v => v === 1)));
+        if (state.canvasSize) setCanvasSize(state.canvasSize);
+        if (state.gridBounds) setGridBounds(state.gridBounds);
+      } catch {
+        alert('Failed to parse JSON file.');
+      }
+    };
+    reader.readAsText(file);
+    // Reset so the same file can be reloaded if needed
+    e.target.value = '';
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      <header>
+        <h1>QR Code Fixer</h1>
+        <span style={{ fontSize: '0.8rem', color: '#777' }}>45×45 grid overlay editor</span>
+      </header>
+
+      <div className="main">
+        <div className="sidebar">
+
+          <div className="panel">
+            <h3>Background Image</h3>
+            <div className="upload-area" onClick={() => fileInputRef.current.click()}>
+              <div style={{ fontSize: '2rem' }}>📷</div>
+              <p>{bgImage ? 'Click to change image' : 'Click to upload QR code'}</p>
+            </div>
+            <input type="file" ref={fileInputRef} accept="image/*" onChange={handleImageUpload} />
+          </div>
+
+          <div className="panel">
+            <h3>Canvas Size</h3>
+            <div className="row">
+              <label>Width
+                <input type="number" min="200" max="1200" value={canvasSize.w}
+                  onChange={e => {
+                    const w = parseInt(e.target.value) || 600;
+                    setCanvasSize(s => ({ ...s, w }));
+                    setGridBounds(b => ({ ...b, w }));
+                  }} />
+              </label>
+              <label>Height
+                <input type="number" min="200" max="1200" value={canvasSize.h}
+                  onChange={e => {
+                    const h = parseInt(e.target.value) || 600;
+                    setCanvasSize(s => ({ ...s, h }));
+                    setGridBounds(b => ({ ...b, h }));
+                  }} />
+              </label>
+            </div>
+          </div>
+
+          <div className="panel">
+            <h3>Grid Position &amp; Size</h3>
+            <div className="row">
+              <label>X offset
+                <input type="number" value={gridBounds.x}
+                  onChange={e => setGridBounds(b => ({ ...b, x: parseInt(e.target.value) || 0 }))} />
+              </label>
+              <label>Y offset
+                <input type="number" value={gridBounds.y}
+                  onChange={e => setGridBounds(b => ({ ...b, y: parseInt(e.target.value) || 0 }))} />
+              </label>
+            </div>
+            <div className="row">
+              <label>Width
+                <input type="number" min="45" value={gridBounds.w}
+                  onChange={e => setGridBounds(b => ({ ...b, w: parseInt(e.target.value) || 45 }))} />
+              </label>
+              <label>Height
+                <input type="number" min="45" value={gridBounds.h}
+                  onChange={e => setGridBounds(b => ({ ...b, h: parseInt(e.target.value) || 45 }))} />
+              </label>
+            </div>
+            <button className="btn-secondary" onClick={() => setGridBounds({ x: 0, y: 0, w: canvasSize.w, h: canvasSize.h })}>
+              Fit to Canvas
+            </button>
+          </div>
+
+          <div className="panel">
+            <h3>Display</h3>
+            <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={showBg} onChange={e => setShowBg(e.target.checked)} />
+              Show background
+            </label>
+            <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={showGrid} onChange={e => setShowGrid(e.target.checked)} />
+              Show grid lines
+            </label>
+            <label>
+              Grid line opacity
+              <div className="slider-row">
+                <input type="range" min="0" max="1" step="0.05" value={gridOpacity}
+                  onChange={e => setGridOpacity(parseFloat(e.target.value))} />
+                <span className="value-badge">{Math.round(gridOpacity * 100)}%</span>
+              </div>
+            </label>
+            <label>
+              Cell fill opacity
+              <div className="slider-row">
+                <input type="range" min="0" max="1" step="0.05" value={cellOpacity}
+                  onChange={e => setCellOpacity(parseFloat(e.target.value))} />
+                <span className="value-badge">{Math.round(cellOpacity * 100)}%</span>
+              </div>
+            </label>
+          </div>
+
+          <div className="panel">
+            <h3>Tool</h3>
+            <div className="tool-toggle">
+              <button className={`tool-btn ${tool === 'fill' ? 'active' : ''}`} onClick={() => setTool('fill')}>
+                ■ Fill
+              </button>
+              <button className={`tool-btn ${tool === 'erase' ? 'active' : ''}`} onClick={() => setTool('erase')}>
+                ✕ Erase
+              </button>
+            </div>
+            <div className="stat"><span>Filled cells</span><span>{filledCount} / {GRID_SIZE * GRID_SIZE}</span></div>
+          </div>
+
+          <div className="panel">
+            <h3>Actions</h3>
+            <button className="btn-success" onClick={download}>⬇ Download as JPG</button>
+            <button className="btn-secondary" onClick={saveState}>💾 Save State (JSON)</button>
+            <button className="btn-secondary" onClick={() => loadInputRef.current.click()}>📂 Load State (JSON)</button>
+            <input type="file" ref={loadInputRef} accept="application/json,.json" onChange={loadState} />
+            <button className="btn-danger" onClick={clearGrid}>✕ Clear All Cells</button>
+          </div>
+
+        </div>
+
+        <div className="canvas-area">
+          <canvas
+            ref={canvasRef}
+            width={canvasSize.w}
+            height={canvasSize.h}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
