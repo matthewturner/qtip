@@ -146,6 +146,7 @@ function App() {
   const [includeOriginalOnDownload, setIncludeOriginalOnDownload] = useState(false);
   const [gridOpacity, setGridOpacity] = useState(0.6);
   const [cellOpacity, setCellOpacity] = useState(1.0);
+  const [overlayColor, setOverlayColor] = useState('#000000');
   const isDragging = useRef(false);
   const loadInputRef = useRef(null);
 
@@ -173,7 +174,7 @@ function App() {
     for (let r = 0; r < gridSize; r++) {
       for (let c = 0; c < gridSize; c++) {
         if (grid[r][c]) {
-          ctx.fillStyle = '#000';
+          ctx.fillStyle = overlayColor;
           ctx.fillRect(
             gridBounds.x + c * cellW,
             gridBounds.y + r * cellH,
@@ -202,7 +203,7 @@ function App() {
     }
   }
 
-  useEffect(() => { draw(); }, [bgImage, grid, gridBounds, showGrid, showBg, gridOpacity, cellOpacity]);
+  useEffect(() => { draw(); }, [bgImage, grid, gridBounds, showGrid, showBg, gridOpacity, cellOpacity, overlayColor]);
 
   function handleImageUpload(e) {
     const file = e.target.files[0];
@@ -285,7 +286,7 @@ function App() {
     for (let r = 0; r < gridSize; r++) {
       for (let c = 0; c < gridSize; c++) {
         if (grid[r][c]) {
-          ctx.fillStyle = '#000';
+          ctx.fillStyle = overlayColor;
           ctx.fillRect(
             gridBounds.x + c * cellW,
             gridBounds.y + r * cellH,
@@ -451,6 +452,18 @@ function App() {
             <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <input type="checkbox" checked={showGrid} onChange={e => setShowGrid(e.target.checked)} />
               Show grid lines
+            </label>
+            <label>
+              Overlay color
+              <div className="slider-row">
+                <input
+                  type="color"
+                  value={overlayColor}
+                  onChange={e => setOverlayColor(e.target.value)}
+                  style={{ width: 44, height: 32, border: 'none', background: 'transparent', padding: 0, cursor: 'pointer' }}
+                />
+                <span className="value-badge" style={{ color: overlayColor }}>{overlayColor.toUpperCase()}</span>
+              </div>
             </label>
             <label>
               Grid line opacity
