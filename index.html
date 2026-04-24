@@ -147,6 +147,8 @@ function App() {
   const [gridOpacity, setGridOpacity] = useState(0.6);
   const [cellOpacity, setCellOpacity] = useState(1.0);
   const [overlayColor, setOverlayColor] = useState('#000000');
+  const [autoInferEnabled, setAutoInferEnabled] = useState(false);
+  const [darkPixelThreshold, setDarkPixelThreshold] = useState(50);
   const isDragging = useRef(false);
   const loadInputRef = useRef(null);
 
@@ -154,6 +156,55 @@ function App() {
   const cellH = gridBounds.h / gridSize;
 
   const filledCount = grid.flat().filter(Boolean).length;
+
+  const inferGridFromImage = useCallback((thresholdPercent) => {
+    if (!bgImage) return;
+
+    const offscreen = document.createElement('canvas');
+    offscreen.width = canvasSize.w;
+    offscreen.height = canvasSize.h;
+    const offCtx = offscreen.getContext('2d', { willReadFrequently: true });
+    if (!offCtx) return;
+
+    offCtx.drawImage(bgImage, 0, 0, offscreen.width, offscreen.height);
+    const imageData = offCtx.getImageData(0, 0, offscreen.width, offscreen.height).data;
+
+    const nextGrid = createEmptyGrid(gridSize);
+    const localCellW = gridBounds.w / gridSize;
+    const localCellH = gridBounds.h / gridSize;
+
+    for (let r = 0; r < gridSize; r++) {
+      for (let c = 0; c < gridSize; c++) {
+        const x0 = Math.max(0, Math.floor(gridBounds.x + c * localCellW));
+        const y0 = Math.max(0, Math.floor(gridBounds.y + r * localCellH));
+        const x1 = Math.min(offscreen.width, Math.ceil(gridBounds.x + (c + 1) * localCellW));
+        const y1 = Math.min(offscreen.height, Math.ceil(gridBounds.y + (r + 1) * localCellH));
+
+        if (x1 <= x0 || y1 <= y0) continue;
+
+        let darkCount = 0;
+        let totalCount = 0;
+
+        for (let y = y0; y < y1; y++) {
+          for (let x = x0; x < x1; x++) {
+            const idx = (y * offscreen.width + x) * 4;
+            const alpha = imageData[idx + 3];
+            const rVal = imageData[idx];
+            const gVal = imageData[idx + 1];
+            const bVal = imageData[idx + 2];
+            const luminance = 0.2126 * rVal + 0.7152 * gVal + 0.0722 * bVal;
+            if (alpha > 0 && luminance < 128) darkCount++;
+            totalCount++;
+          }
+        }
+
+        const darkPercent = totalCount > 0 ? (darkCount / totalCount) * 100 : 0;
+        nextGrid[r][c] = darkPercent >= thresholdPercent;
+      }
+    }
+
+    setGrid(nextGrid);
+  }, [bgImage, canvasSize.h, canvasSize.w, gridBounds, gridSize]);
 
   function draw() {
     const canvas = canvasRef.current;
@@ -204,6 +255,11 @@ function App() {
   }
 
   useEffect(() => { draw(); }, [bgImage, grid, gridBounds, showGrid, showBg, gridOpacity, cellOpacity, overlayColor]);
+
+  useEffect(() => {
+    if (!autoInferEnabled) return;
+    inferGridFromImage(darkPixelThreshold);
+  }, [autoInferEnabled, darkPixelThreshold, inferGridFromImage]);
 
   function handleImageUpload(e) {
     const file = e.target.files[0];
@@ -479,6 +535,32 @@ function App() {
                 <input type="range" min="0" max="1" step="0.05" value={cellOpacity}
                   onChange={e => setCellOpacity(parseFloat(e.target.value))} />
                 <span className="value-badge">{Math.round(cellOpacity * 100)}%</span>
+              </div>
+            </label>
+            <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={autoInferEnabled}
+                onChange={e => setAutoInferEnabled(e.target.checked)}
+              />
+              Auto infer filled cells
+            </label>
+            <label>
+              Dark pixel threshold per cell
+              <div className="slider-row">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={darkPixelThreshold}
+                  onChange={e => {
+                    const value = parseInt(e.target.value) || 0;
+                    setDarkPixelThreshold(value);
+                    inferGridFromImage(value);
+                  }}
+                />
+                <span className="value-badge">{darkPixelThreshold}%</span>
               </div>
             </label>
           </div>
