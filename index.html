@@ -144,6 +144,7 @@ function App() {
   const [showGrid, setShowGrid] = useState(true);
   const [showBg, setShowBg] = useState(true);
   const [includeOriginalOnDownload, setIncludeOriginalOnDownload] = useState(false);
+  const [includeCellBorderOnDownload, setIncludeCellBorderOnDownload] = useState(false);
   const [gridOpacity, setGridOpacity] = useState(0.6);
   const [cellOpacity, setCellOpacity] = useState(1.0);
   const [overlayColor, setOverlayColor] = useState('#000000');
@@ -326,16 +327,16 @@ function App() {
 
   function download() {
     // Render a clean version without grid lines
-    const canvas = document.createElement('canvas');
-    canvas.width = canvasSize.w;
-    canvas.height = canvasSize.h;
-    const ctx = canvas.getContext('2d');
+    const baseCanvas = document.createElement('canvas');
+    baseCanvas.width = canvasSize.w;
+    baseCanvas.height = canvasSize.h;
+    const ctx = baseCanvas.getContext('2d');
 
     if (includeOriginalOnDownload && bgImage) {
-      ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(bgImage, 0, 0, baseCanvas.width, baseCanvas.height);
     } else {
       ctx.fillStyle = '#fff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(0, 0, baseCanvas.width, baseCanvas.height);
     }
 
     ctx.globalAlpha = cellOpacity;
@@ -353,9 +354,23 @@ function App() {
       }
     }
 
+    let exportCanvas = baseCanvas;
+    if (includeCellBorderOnDownload) {
+      const borderX = Math.max(1, Math.ceil(cellW));
+      const borderY = Math.max(1, Math.ceil(cellH));
+      const borderedCanvas = document.createElement('canvas');
+      borderedCanvas.width = baseCanvas.width + borderX * 2;
+      borderedCanvas.height = baseCanvas.height + borderY * 2;
+      const borderedCtx = borderedCanvas.getContext('2d');
+      borderedCtx.fillStyle = '#fff';
+      borderedCtx.fillRect(0, 0, borderedCanvas.width, borderedCanvas.height);
+      borderedCtx.drawImage(baseCanvas, borderX, borderY);
+      exportCanvas = borderedCanvas;
+    }
+
     const link = document.createElement('a');
     link.download = 'qr-fixed.jpg';
-    link.href = canvas.toDataURL('image/jpeg', 0.95);
+    link.href = exportCanvas.toDataURL('image/jpeg', 0.95);
     link.click();
   }
 
@@ -587,6 +602,14 @@ function App() {
                 onChange={e => setIncludeOriginalOnDownload(e.target.checked)}
               />
               Include original image in download
+            </label>
+            <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={includeCellBorderOnDownload}
+                onChange={e => setIncludeCellBorderOnDownload(e.target.checked)}
+              />
+              Include 1-cell border in download
             </label>
             <button className="btn-success" onClick={download}>⬇ Download as JPG</button>
             <button className="btn-secondary" onClick={saveState}>💾 Save State (JSON)</button>
